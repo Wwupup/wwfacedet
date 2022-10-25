@@ -349,26 +349,43 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
             objectness.permute(0, 2, 3, 1).reshape(num_imgs, -1)
             for objectness in objectnesses
         ]
+        # if output_kps:
+        #     flatten_kps_preds = [
+        #         kps_pred.permute(0, 2, 3, 1).reshape(
+        #           num_imgs, -1, self.NK*2)
+        #         for kps_pred in kps_preds
+        #     ]
 
         flatten_cls_scores = torch.cat(flatten_cls_scores, dim=1).sigmoid()
         flatten_bbox_preds = torch.cat(flatten_bbox_preds, dim=1)
         flatten_objectness = torch.cat(flatten_objectness, dim=1).sigmoid()
         flatten_priors = torch.cat(mlvl_priors)
+        # if output_kps:
+        #     flatten_kps_preds = torch.cat(flatten_kps_preds, dim=1)
 
         flatten_bboxes = self._bbox_decode(flatten_priors, flatten_bbox_preds)
+        # if output_kps:
+        #     flatten_kpss = self._kps_decode(
+        #       flatten_priors,
+        #       flatten_kps_preds)
 
         if rescale:
             scale_factors = np.array(
                 [img_meta['scale_factor'] for img_meta in img_metas])
-            flatten_bboxes[..., :4] /= flatten_bboxes.new_tensor(
-                scale_factors).unsqueeze(1)
+            scale_factors = flatten_bboxes.new_tensor(scale_factors).unsqueeze(
+                1)
+            flatten_bboxes /= scale_factors
+            # if output_kps:
+            #     kps_scale_factor = scale_factors[...,:2].repeat(1,1,self.NK)
+            #     flatten_kpss /= kps_scale_factor
 
         result_list = []
         for img_id in range(num_imgs):
             cls_scores = flatten_cls_scores[img_id]
             score_factor = flatten_objectness[img_id]
             bboxes = flatten_bboxes[img_id]
-
+            # if output_kps:
+            #     kpss = flatten_kpss[img_id]
             result_list.append(
                 self._bboxes_nms(cls_scores, bboxes, score_factor, cfg))
 
