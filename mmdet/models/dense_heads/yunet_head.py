@@ -205,10 +205,11 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
                 convs(feat)
                 for feat, convs in zip(feats_reg, self.multi_level_obj)
             ]
-            kps_preds = [
-                convs(feat)
-                for feat, convs in zip(feats_reg, self.multi_level_kps)
-            ]
+            if self.use_kps:
+                kps_preds = [
+                    convs(feat)
+                    for feat, convs in zip(feats_reg, self.multi_level_kps)
+                ]
         else:
             cls_preds = [
                 convs(feat) for feat, convs in zip(feats, self.multi_level_cls)
@@ -220,9 +221,11 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
             obj_preds = [
                 convs(feat) for feat, convs in zip(feats, self.multi_level_obj)
             ]
-            kps_preds = [
-                convs(feat) for feat, convs in zip(feats, self.multi_level_kps)
-            ]
+            if self.use_kps:
+                kps_preds = [
+                    convs(feat)
+                    for feat, convs in zip(feats, self.multi_level_kps)
+                ]
 
         if torch.onnx.is_in_onnx_export():
             batch_size = cls_preds[0].shape[0]
@@ -244,8 +247,8 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
                 for f in kps_preds
             ]
             return (cls, obj, bbox, kps)
-
-        return cls_preds, bbox_preds, obj_preds, kps_preds
+        return (cls_preds, bbox_preds, obj_preds,
+                kps_preds if self.use_kps else None)
 
     def forward_train(self,
                       x,
@@ -484,20 +487,24 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
             objectness.permute(0, 2, 3, 1).reshape(num_imgs, -1)
             for objectness in objectnesses
         ]
-        flatten_kps_preds = [
-            kps_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, self.NK * 2)
-            for kps_pred in kps_preds
-        ]
 
         flatten_cls_preds = torch.cat(flatten_cls_preds, dim=1)
         flatten_bbox_preds = torch.cat(flatten_bbox_preds, dim=1)
         flatten_objectness = torch.cat(flatten_objectness, dim=1)
-        flatten_kps_preds = torch.cat(flatten_kps_preds, dim=1)
+
+        if self.use_kps:
+            flatten_kps_preds = [
+                kps_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, self.NK * 2)
+                for kps_pred in kps_preds
+            ]
+            flatten_kps_preds = torch.cat(flatten_kps_preds, dim=1)
 
         flatten_priors = torch.cat(mlvl_priors).unsqueeze(0).repeat(
             num_imgs, 1, 1)
         flatten_bboxes = self._bbox_decode(flatten_priors, flatten_bbox_preds)
 
+        if not self.use_kps:
+            gt_kpss = [None] * len(gt_bboxes)
         (pos_masks, cls_targets, obj_targets, bbox_targets, kps_targets,
          kps_weights, num_fg_imgs) = multi_apply(self._get_target_single,
                                                  flatten_cls_preds.detach(),
@@ -518,8 +525,6 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
         cls_targets = torch.cat(cls_targets, 0)
         obj_targets = torch.cat(obj_targets, 0)
         bbox_targets = torch.cat(bbox_targets, 0)
-        kps_targets = torch.cat(kps_targets, 0)
-        kps_weights = torch.cat(kps_weights, 0)
 
         loss_bbox = self.loss_bbox(
             flatten_bboxes.view(-1, 4)[pos_masks],
@@ -533,7 +538,12 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
         # loss_cls = self.loss_cls(
         #     flatten_cls_preds.view(-1, self.num_classes),
         #                             cls_targets)
+        loss_dict = dict(
+            loss_cls=loss_cls, loss_bbox=loss_bbox, loss_obj=loss_obj)
+
         if self.use_kps:
+            kps_targets = torch.cat(kps_targets, 0)
+            kps_weights = torch.cat(kps_weights, 0)
             encoded_kpss = self._kps_encode(
                 flatten_priors.view(-1, 4)[pos_masks], kps_targets)
 
@@ -543,11 +553,7 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
                 weight=kps_weights.view(-1, 1),
                 # reduction_override='sum',
                 avg_factor=torch.sum(kps_weights))
-        loss_dict = dict(
-            loss_cls=loss_cls,
-            loss_bbox=loss_bbox,
-            loss_obj=loss_obj,
-            loss_kps=loss_kps)
+            loss_dict['loss_kps'] = loss_kps
 
         return loss_dict
 
@@ -575,15 +581,18 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
         num_priors = priors.size(0)
         num_gts = gt_labels.size(0)
         gt_bboxes = gt_bboxes.to(decoded_bboxes.dtype)
-        gt_kpss = gt_kpss.to(decoded_bboxes.dtype)
+        if self.use_kps:
+            gt_kpss = gt_kpss.to(decoded_bboxes.dtype)
         # No target
         if num_gts == 0:
             cls_target = cls_preds.new_zeros((0, self.num_classes))
             bbox_target = cls_preds.new_zeros((0, 4))
             obj_target = cls_preds.new_zeros((num_priors, 1))
             kps_target = cls_preds.new_zeros((0, self.NK * 2))
+            kps_weight = cls_preds.new_zeros((0, 1))
             foreground_mask = cls_preds.new_zeros(num_priors).bool()
-            return (foreground_mask, cls_target, obj_target, bbox_target, 0)
+            return (foreground_mask, cls_target, obj_target, bbox_target,
+                    kps_target, kps_weight, 0)
 
         # Uses center priors with 0.5 offset to assign targets,
         # but use center priors without offset to regress bboxes.
@@ -611,10 +620,14 @@ class YuNet_Head(BaseDenseHead, BBoxTestMixin):
 
         bbox_target = sampling_result.pos_gt_bboxes
 
-        kps_target = gt_kpss[pos_assigned_gt_inds, :, :2].reshape(
-            (-1, self.NK * 2))
-        kps_weight = torch.mean(
-            gt_kpss[pos_assigned_gt_inds, :, 2], dim=1, keepdims=True)
+        if self.use_kps:
+            kps_target = gt_kpss[pos_assigned_gt_inds, :, :2].reshape(
+                (-1, self.NK * 2))
+            kps_weight = torch.mean(
+                gt_kpss[pos_assigned_gt_inds, :, 2], dim=1, keepdims=True)
+        else:
+            kps_target = None
+            kps_weight = None
 
         foreground_mask = torch.zeros_like(objectness).to(torch.bool)
         foreground_mask[pos_inds] = 1
