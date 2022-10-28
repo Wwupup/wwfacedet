@@ -14,13 +14,14 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    root = '../work_dirs/'
+    root = 'work_dirs/'
+    assert os.path.exists(root)
     target_dir = os.path.join(
         root,
         os.path.basename(args.cur_config).replace('.py', ''))
-    assert not os.path.exists(target_dir)
-    print(f'Waiting for {target_dir} ...')
+    assert os.path.exists(target_dir)
     target = os.path.join(target_dir, 'epoch_640.pth')
+    print(f'Waiting for {target} ...')
     while (not os.path.exists(target)):
         sleep(3600)
     print('OK!')
