@@ -42,6 +42,14 @@ def parse_args():
     return args
 
 
+def count_conv_num(model, module_type):
+    cnt = 0
+    for m in model.modules():
+        if m.__class__.__name__ == module_type:
+            cnt += 1
+    return cnt
+
+
 def main():
 
     args = parse_args()
@@ -88,7 +96,9 @@ def main():
         print(f'{split_line}\nUse size divisor set input shape '
               f'from {ori_shape} to {input_shape}\n')
     print(f'{split_line}\nInput shape: {input_shape}\n'
-          f'Flops: {flops}\nParams: {params}\n{split_line}')
+          f'Flops: {flops}\nParams: {params}\n'
+          f'Conv2d_Layers: {count_conv_num(model, "Conv2d")}\n'
+          f'{split_line}')
     print('!!!Please be cautious if you use the results in papers. '
           'You may need to check if all ops are supported and verify that the '
           'flops computation is correct.')
