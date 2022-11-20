@@ -9,17 +9,21 @@ from ....utils.yunet_layer import ConvDPUnit
 @NECKS.register_module()
 class WWHead_FPNdw(nn.Module):
 
-    def __init__(self, in_channels, out_idx):
+    def __init__(self, in_channels, out_idx, out_channel=-1):
         super().__init__()
         self.num_layers = len(in_channels)
         self.out_idx = out_idx
+        if out_channel == -1:
+            out_channel = in_channels[0]
+            
         self.channel_adjust_convs = nn.ModuleList()
         self.lateral_convs = nn.ModuleList()
         for i in range(self.num_layers):
-            self.lateral_convs.append(
-                ConvDPUnit(in_channels[i], in_channels[i], True))
             self.channel_adjust_convs.append(
-                nn.Conv2d(in_channels[i], in_channels[i], 1, 1, 0))
+                nn.Conv2d(in_channels[i], out_channel, 1, 1, 0))
+            self.lateral_convs.append(
+                ConvDPUnit(out_channel, out_channel, True))
+
         self.init_weights()
 
     def init_weights(self):
