@@ -27,46 +27,6 @@ data_root = 'data/widerface/'
 train_root = 'data/widerface/'
 val_root = 'data/widerface/'
 img_norm_cfg = dict(mean=[0., 0., 0.], std=[1., 1., 1.], to_rgb=False)
-train_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True),
-    dict(type='LoadAnnotations', with_bbox=True, with_keypoints=True),
-    dict(type='RandomSquareCrop', crop_choice=[0.3, 0.45, 0.6, 0.8, 1.0]),
-    dict(type='Resize', img_scale=(640, 640), keep_ratio=False),
-    dict(type='RandomFlip', flip_ratio=0.5),
-    # dict(
-    #     type='PhotoMetricDistortion',
-    #     brightness_delta=32,
-    #     contrast_range=(0.5, 1.5),
-    #     saturation_range=(0.5, 1.5),
-    #     hue_delta=18),
-    dict(type='Normalize', mean=[0., 0., 0.], std=[1., 1., 1.], to_rgb=False),
-    dict(type='DefaultFormatBundle'),
-    dict(
-        type='Collect',
-        keys=[
-            'img', 'gt_bboxes', 'gt_labels', 'gt_bboxes_ignore',
-            'gt_keypointss'
-        ])
-]
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(
-        type='MultiScaleFlipAug',
-        img_scale=(640, 640),
-        flip=False,
-        transforms=[
-            dict(type='Resize', keep_ratio=True),
-            dict(type='RandomFlip', flip_ratio=0.0),
-            dict(
-                type='Normalize',
-                mean=[0., 0., 0.],
-                std=[1., 1., 1.],
-                to_rgb=False),
-            dict(type='Pad', size=(640, 640), pad_val=0),
-            dict(type='ImageToTensor', keys=['img']),
-            dict(type='Collect', keys=['img'])
-        ])
-]
 data = dict(
     samples_per_gpu=16,
     workers_per_gpu=4,
@@ -87,14 +47,8 @@ data = dict(
                     0.8,
                     1.0
                 ]),
-            dict(type='Resize', img_scale=(640, 640), keep_ratio=False),
+            dict(type='Resize', img_scale=(640, 640), keep_ratio=True),
             dict(type='RandomFlip', flip_ratio=0.5),
-            # dict(
-            #     type='PhotoMetricDistortion',
-            #     brightness_delta=32,
-            #     contrast_range=(0.5, 1.5),
-            #     saturation_range=(0.5, 1.5),
-            #     hue_delta=18),
             dict(
                 type='Normalize',
                 mean=[0., 0., 0.],

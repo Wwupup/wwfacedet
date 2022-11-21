@@ -40,7 +40,7 @@ data = dict(
             dict(
                 type='RandomSquareCrop',
                 crop_choice=[0.5, 0.7, 0.9, 1.1, 1.3, 1.5]),
-            dict(type='Resize', img_scale=(640, 640), keep_ratio=False),
+            dict(type='Resize', img_scale=(640, 640), keep_ratio=True),
             dict(type='RandomFlip', flip_ratio=0.5),
             # dict(
             #     type='PhotoMetricDistortion',
