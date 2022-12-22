@@ -128,3 +128,5 @@ work_dirs/
 /wout
 
 /onnx
+
+**.pdf

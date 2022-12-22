@@ -99,11 +99,12 @@ def pytorch2onnx(model,
     if model.bbox_head.use_kps:
         output_names.extend([f'kps_{s}' for s in [8, 16, 32]])
 
-    # dynamic_axes = None
-    dynamic_axes = {out: {0: 'batch', 1: 'dim'} for out in output_names}
-
     input_name = 'input'
-    dynamic_axes[input_name] = {0: 'batch', 2: 'height', 3: 'width'}
+    dynamic_axes = None
+    if dynamic_export:
+        dynamic_axes = {out: {0: 'batch', 1: 'dim'} for out in output_names}
+
+        dynamic_axes[input_name] = {0: 'batch', 2: 'height', 3: 'width'}
 
     torch.onnx.export(
         model,
